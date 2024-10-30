@@ -1,8 +1,6 @@
 package golog
 
 import (
-	"encoding/json"
-	"fmt"
 	"reflect"
 )
 
@@ -42,18 +40,11 @@ func (p *DevHandler) appendType(buf []byte, val reflect.Value, fgColor []byte, i
 		buf = p.appendSlice(buf, val, fgColor, indent)
 	case reflect.Map:
 		buf = p.appendMap(buf, val, fgColor, indent)
-
+	case reflect.Struct:
+		buf = p.appendStruct(buf, val, fgColor, indent)
 	case reflect.Interface:
 		buf = p.appendInterface(buf, val)
-	case reflect.Struct:
-		// Attempt to marshal the struct to JSON
-		vJson, err := json.Marshal(val.Interface())
-		if err == nil {
-			buf = p.appendString(vJson, val, indent)
-		} else {
-			// If marshaling fails, use default formatting
-			buf = fmt.Appendf(buf, "%v", val.Interface())
-		}
+
 	case reflect.Chan, reflect.Func:
 		buf = p.appendUnsupported(buf, kind.String())
 	case reflect.Invalid:
