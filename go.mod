@@ -1,4 +1,4 @@
-module github.com/primalskill/golog
+module github.com/tcornell05/golog
 
 go 1.22
 
