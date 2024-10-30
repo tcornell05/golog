@@ -47,9 +47,9 @@ func (p *DevHandler) appendType(buf []byte, val reflect.Value, fgColor []byte, i
 		buf = p.appendInterface(buf, val)
 	case reflect.Struct:
 		// Attempt to marshal the struct to JSON
-		jsonBytes, err := json.Marshal(val.Interface())
+		_, err := json.Marshal(val.Interface())
 		if err == nil {
-			buf = append(buf, jsonBytes...)
+			buf = p.appendString(buf, val, indent)
 		} else {
 			// If marshaling fails, use default formatting
 			buf = fmt.Appendf(buf, "%v", val.Interface())
