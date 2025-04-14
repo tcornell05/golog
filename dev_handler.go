@@ -13,15 +13,18 @@ import (
 )
 
 var (
-	colorBgGreen = []byte("\x1b[42m")
-	colorFgGreen = []byte("\x1b[32m")
-	colorBgRed   = []byte("\x1b[41m")
-	colorFgRed   = []byte("\x1b[31m")
-	colorBgCyan  = []byte("\x1b[46m")
-	colorFgCyan  = []byte("\x1b[36m")
-	colorFgBlack = []byte("\x1b[30m")
-	colorReset   = []byte("\x1b[0m")
-	colorFaint   = []byte("\x1b[2m")
+	colorBgGreen  = []byte("\x1b[42m")
+	colorFgGreen  = []byte("\x1b[32m")
+	colorBgRed    = []byte("\x1b[41m")
+	colorFgRed    = []byte("\x1b[31m")
+	colorBgCyan   = []byte("\x1b[46m")
+	colorFgCyan   = []byte("\x1b[36m")
+	colorBgYellow = []byte("\x1b[43m")
+	colorFgYellow = []byte("\x1b[33m")
+	colorFgBlack  = []byte("\x1b[30m")
+	colorReset    = []byte("\x1b[0m")
+	colorFaint    = []byte("\x1b[2m")
+	colorBold     = []byte("\x1b[1m")
 )
 
 type groupOrAttrs struct {
@@ -59,7 +62,7 @@ func (p *DevHandler) Handle(_ context.Context, r slog.Record) error {
 
 	// append the source (file:line)
 	if r.PC != 0 {
-		buf = p.appendSource(buf, r.PC, fgColor)
+		buf = p.appendSource(buf, r.PC, fgColor, r.Level)
 	}
 
 	buf = append(buf, '\n')
@@ -138,20 +141,64 @@ func (p *DevHandler) withGroupOrAttrs(goa groupOrAttrs) *DevHandler {
 func (p *DevHandler) appendLevelMessage(buf []byte, level slog.Level, msg string) ([]byte, []byte, []byte) {
 	var colorBg, colorFg []byte
 
-	if level < 0 {
+	// Enhanced color coding based on log level
+	switch level {
+	case slog.LevelDebug:
 		colorBg = colorBgCyan
 		colorFg = colorFgCyan
-	} else if level < 4 {
+	case slog.LevelInfo:
 		colorBg = colorBgGreen
 		colorFg = colorFgGreen
-	} else {
+	case slog.LevelWarn:
+		colorBg = colorBgYellow
+		colorFg = colorFgYellow
+	case slog.LevelError:
 		colorBg = colorBgRed
 		colorFg = colorFgRed
+	default:
+		if level < 0 {
+			colorBg = colorBgCyan
+			colorFg = colorFgCyan
+		} else if level < 4 {
+			colorBg = colorBgGreen
+			colorFg = colorFgGreen
+		} else {
+			colorBg = colorBgRed
+			colorFg = colorFgRed
+		}
 	}
 
-	buf = fmt.Appendf(buf, "%s%s %s %s %s%s%s", colorBg, colorFgBlack, level, colorReset, colorFg, msg, colorReset)
+	// Display the level as a user-friendly string
+	levelStr := getLevelString(level)
+
+	// Format the message with a more readable layout
+	buf = fmt.Appendf(buf, "%s%s %s %s %s%s%s%s",
+		colorBg,
+		colorFgBlack,
+		levelStr,
+		colorReset,
+		colorBold,
+		colorFg,
+		msg,
+		colorReset)
 
 	return buf, colorBg, colorFg
+}
+
+// Helper function to get a user-friendly level string
+func getLevelString(level slog.Level) string {
+	switch level {
+	case slog.LevelDebug:
+		return "DEBUG"
+	case slog.LevelInfo:
+		return "INFO "
+	case slog.LevelWarn:
+		return "WARN "
+	case slog.LevelError:
+		return "ERROR"
+	default:
+		return fmt.Sprintf("%-5s", level.String())
+	}
 }
 
 func (p *DevHandler) appendTime(buf []byte, t time.Time, fgColor []byte) []byte {
@@ -161,7 +208,7 @@ func (p *DevHandler) appendTime(buf []byte, t time.Time, fgColor []byte) []byte 
 	return buf
 }
 
-func (p *DevHandler) appendSource(buf []byte, pc uintptr, fgColor []byte) []byte {
+func (p *DevHandler) appendSource(buf []byte, pc uintptr, fgColor []byte, level slog.Level) []byte {
 	f, _ := runtime.CallersFrames([]uintptr{pc}).Next()
 
 	path := f.File
@@ -171,6 +218,12 @@ func (p *DevHandler) appendSource(buf []byte, pc uintptr, fgColor []byte) []byte
 
 	buf = fmt.Appendf(buf, "\n%*s", 2, "") // indent
 	buf = fmt.Appendf(buf, "%sSource%s : %s:%d", fgColor, colorReset, path, f.Line)
+
+	// Add code snippet if file exists
+	config := DefaultCodeSnippetConfig()
+	snippet := FormatCodeSnippet(path, f.Line, level, config)
+	buf = append(buf, '\n')
+	buf = append(buf, snippet...)
 
 	return buf
 }
@@ -200,7 +253,6 @@ func (p *DevHandler) appendAttr(buf []byte, a slog.Attr, fgColor []byte, indent 
 
 	case slog.KindString:
 		if len(a.Value.String()) > 0 {
-
 			// verify if the string is JSON
 			if json.Valid([]byte(a.Value.String())) == true {
 				buf = p.appendJSON(buf, []byte(a.Value.String()), indent)
@@ -208,7 +260,6 @@ func (p *DevHandler) appendAttr(buf []byte, a slog.Attr, fgColor []byte, indent 
 			} else {
 				buf = append(buf, a.Value.String()...)
 			}
-
 		} else {
 			buf = fmt.Appendf(buf, "%sempty%s", colorFaint, colorReset)
 		}
